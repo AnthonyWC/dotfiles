@@ -1,0 +1,1247 @@
+#!/bin/bash
+
+printf "Source from: " && basename -- "$0"
+
+export PATH="${PATH}:${HOME}/.krew/bin"
+
+K8_NAME=$(kubectl config current-context)
+
+if [ -z $K8_NAME ]; then
+  echo "** K8_NAME is not set! **"
+else
+  echo "** K8_NAME set to $K8_NAME **"
+fi
+
+# shellcheck disable=SC1090
+source "$HOME/.oh-my-zsh/custom/powerlevel_kubecontext.zsh"
+source <(kubectl completion zsh)
+#source <(kubectl-argo-rollouts completion bash)
+#source "$HOME/.oh-my-zsh/custom/kube-ps1.plugin.zsh"
+
+#################################################################
+#                   Alias                                       #
+#################################################################
+alias k8_api_node="curl -s http://localhost:8080/api/v1/nodes | jq '.items[] .metadata.labels'"
+alias k8_api_resource="kubectl api-resources --api-group=apps"
+alias k8_api_url="kubectl config view -o jsonpath='{.clusters[0].cluster.server}'"
+alias k8_describe_pods="kubectl describe pods | grep -w '^Name:\|Namespace:\|Node:\|Status:' | sed '0~4 a\'"
+
+alias k8_deploy_ui='kubectl create -f https://rawgit.com/kubernetes/dashboard/master/src/deploy/kubernetes-dashboard.yaml'
+
+## see fucntion
+#alias k8_get_podIP
+
+alias k8_get_secret_all="kubectl get secret --all-namespaces"
+alias k8_get_svc_all="kubectl get service --all-namespaces"
+alias k8_list_cluster="kubectl config view | grep 'cluster: [a-z]'"
+alias k8_pod_name="kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}'"
+#alias k8_jenkins_open='gui google-chrome $(kubectl describe ingress jenkins | grep Address | awk '{print $2}')'
+alias k8_jenkins_open='gui google-chrome $(kubectl describe ingress jenkins | grep Address)'
+alias k8n="kubens"
+
+alias kb="kubectl"
+# change to function
+#alias kb_apply="kubectl apply --validate=true -f "
+alias kb_argoroll_list="kubectl argo rollouts list rollouts"
+alias kb_diff="kubectl diff -f "
+
+# kubectl describe
+alias kb_dapp="kubectl describe applications"
+alias kb_dapp_type="kubectl describe applications | ag '^Name:|Source Type'"
+alias kb_dcm="kubectl describe configmap"
+alias kb_dd="kubectl describe deploy"
+alias kb_dds="kubectl describe daemonset"
+alias kb_dhpa="kubectl describe hpa"
+alias kb_di="kubectl describe ingress"
+alias kb_dj="kubectl describe job"
+alias kb_dns="kubectl describe namespace"
+alias kb_dn="kubectl describe node"
+alias kb_dp="kubectl describe pod"
+alias kb_droll="kubectl describe rollout"
+alias kb_drs="kubectl describe rs"
+alias kb_ds="kubectl describe service"
+alias kb_dsa="kubectl describe serviceaccount"
+alias kb_dsec="kubectl describe secret"
+alias kb_dsecproviderclass="kubectl describe secretproviderclass"
+alias kb_dsm="kubectl describe servicemonitor"
+alias kb_dstate="kubectl describe statefulset"
+alias kb_dstorageclass="kubectl describe storageclass"
+
+# kubectl get
+alias kb_gall="kubectl get all"
+alias kb_gapp="kubectl get applications"
+alias kb_gautoscaler="kubectl -n kube-system get deployment.apps/cluster-autoscaler"
+alias kb_gclusterrole="kubectl get clusterrole"
+alias kb_gcm="kubectl get configmap"
+alias kb_gd="kubectl get deploy"
+alias kb_gds="kubectl get daemonset"
+alias kb_gd_w="kubectl get deploy -o wide"
+alias kb_gend="kubectl get endpoints"
+alias kb_gevent="kubectl get events --sort-by=.metadata.creationTimestamp"
+alias kb_ghpa="kubectl get hpa"
+alias kb_gi="kubectl get ingress"
+alias kb_gj="kubectl get job"
+alias kb_gn="kubectl get node"
+alias kb_gn_w="kubectl get node -o wide"
+alias kb_gns="kubectl get namespace"
+alias kb_gns_current="kubectl config view --minify -o jsonpath='{..namespace}'"
+alias kb_gp="kubectl get pod"
+alias kb_gp_volume="kubectl get pod -o jsonpath='{.items[].spec.volumes}' | json2yaml"
+alias kb_gp_volume_json="kubectl get pod -o jsonpath='{.items[].spec.volumes}'"
+alias kb_gprom="kubectl get prometheus"
+alias kb_gp_w="kubectl get pod -o wide"
+#alias kb_gp_image="kubectl get pod -o json | jq -r '.items[] | .spec.containers[].image'"
+alias kb_grole="kubectl get role"
+alias kb_groll="kubectl get rollout"
+alias kb_grs="kubectl get rs"
+alias kb_gs="kubectl get service"
+alias kb_gs_w="kubectl get service -o wide"
+alias kb_gsa="kubectl get serviceaccount"
+alias kb_gsec="kubectl get secret"
+alias kb_gsecproviderclass="kubectl get secretproviderclass"
+alias kb_gsm="kubectl get servicemonitor"
+alias kb_gstate="kubectl get statefulset"
+alias kb_gstorageclass="kubectl get storageclass"
+alias kb_grolebind="kubectl get rolebinding"
+alias kb_gval_webhook_conf="kubectl get validatingwebhookconfigurations"
+
+alias kb_neat="kubectl neat"
+
+alias kb_roll_restart="kubectl rollout restart deployment"
+alias kb_roll_status="kubectl rollout status deploy"
+
+alias kb_tp="kubectl top pod"
+alias kb_tn="kubectl top node"
+
+alias kubectl="kubecolor"
+
+###
+k8x () {
+  kubectx
+  k8_cluster_name
+  k8_get_ver
+}
+
+compdef kubecolor=kubectl
+
+####################################################
+#                Kubernetes                        #
+####################################################
+export KUBE_EDITOR=vi
+# export PATH=$PATH:$HOME/.kube/plugins/restart
+export LBC_VERSION="v2.0.0"
+
+eks_eni () {
+  cat <<EOF
+  https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-eni.html
+EOF
+}
+
+eks_gn () {
+  local CLUSTER=$(kubectl config current-context)
+  eksctl get nodegroup --region us-west-2 --cluster=$CLUSTER
+}
+
+eks_gsa () {
+  local CLUSTER=$(kubectl config current-context)
+  eksctl get iamserviceaccount --region us-west-2 --cluster=$CLUSTER
+}
+
+eks_scale_helper () {
+  cat <<EOF
+eksctl scale nodegroup --cluster=<clusterName> --nodes=<desiredCount> --name=<nodegroupName> [ --nodes-min=<minSize> ] [ --nodes-max=<maxSize> ]
+
+EOF
+}
+
+
+k8_api_server () {
+  cat <<EOF
+kubectl get --raw "/api/v1/nodes/"
+
+kubectl get --raw "/api/v1/nodes/" | jq -r ' .items[] | .metadata.name'
+
+kubectl get --raw "/api/v1/nodes/$NODE/proxy/metrics/cadvisor"
+
+EOF
+}
+
+k8_cluster_name () {
+  export K8_NAME=$(kubectl config current-context |  awk -F '/' '{print $2}')
+  echo "Current EKS cluster name: $K8_NAME"
+}
+
+k8_dns () {
+  cat <<EOF
+cat /etc/resolv.conf
+nameserver #.#.#.#
+search default.svc.cluster.local svc.cluster.local cluster.local us-west-2.compute.internal
+
+nslookup kubernetes.default.svc.cluster.local
+
+EOF
+}
+
+k8_event_helper () {
+  cat <<EOF
+kubectl get events --field-selector involvedObject.name=[...]
+
+kubectl get events --output json
+{
+    "apiVersion": "v1",
+    "items": [
+        {
+            "apiVersion": "v1",
+            "count": 259,
+            "eventTime": null,
+            "firstTimestamp": "2020-04-15T12:00:46Z",
+            "involvedObject": {                 <------ * this *
+                "apiVersion": "v1",
+                "fieldPath": "spec.containers{liveness}",
+                "kind": "Pod",
+                "name": "liveness-exec",        <------ * this *
+                "namespace": "default",
+            },
+            ...
+EOF
+}
+
+k8_get_ver () {
+  export K8_VER=$(kubectl version --short 2>/dev/null | grep 'Server Version:' | sed 's/[^0-9.]*\([0-9.]*\).*/\1/' | cut -d. -f1,2)
+  echo "Current EKS cluster version: $K8_VER"
+}
+
+k8_autoscale_ver () {
+  export K8_AUTOSCALER_VER=$(curl -s "https://api.github.com/repos/kubernetes/autoscaler/releases" | grep '"tag_name":' | sed -s 's/.*-\([0-9][0-9\.]*\).*/\1/' | grep -m1 ${K8_VER})
+  echo "Current EKS autoscaler version: $K8_AUTOSCALER_VER"
+}
+
+k8_cluster_name
+k8_get_ver
+
+####################################################
+#                Minikube                          #
+####################################################
+k8_mini_status () {
+
+  minikube status
+
+  echo "\n** kubectl config get-contexts ** "
+  kubectl config get-contexts | sed '1p;/*/!d' | column -t
+  #echo "\n** kubectl config current context ** "
+  printf "Current context: "
+  kubectl config current-context
+
+  local minik8_status=$(minikube status | tee /dev/tty | awk '{print $2}')
+
+  if [[ $minik8_status -ne "Stopped" ]]; then
+    printf "Minikube is running.. check pods: \n"
+    kubectl get pods --all-namespaces
+  else
+    echo "You can use mini_start_kvm2 to run new.."
+  fi
+}
+
+####################################################
+#                GCP                               #
+####################################################
+# echo "\nGoogle Container Engine (GCE)"
+# gcloud container clusters list
+
+####################################################
+
+
+mini_start_kvm2 () {
+  minikube start --memory 16384 --cpus 2 --vm-driver kvm2 && \
+  echo "Enable registry.." && minikube addons enable registry && \
+  echo "eval $(minikube docker-env)" && eval $(minikube docker-env) && \
+  echo "Now build your images..."
+}
+
+k8_concept () {
+  cat <<EOF
+Node: worker machine which can either be virtual or physical; pod always runs on a node; node can have multiple pods.
+
+Pods: Abstraction of shared context consists a set of shared cgroups/network/storage within a namespace
+
+ConfigMaps: decouple configuration artifacts from image content to keep containerized applications portable. ConfigMap API resource stores data as KV pairs.
+
+ReplicaSet: ensures that a specified # of pod replicas are running
+Deployment manages ReplicaSets and it is recommended to use Deployments instead of directly using ReplicaSets
+
+StatefulSets (1.7) replaces PetSets (1.4)
+- Controller that provides a unique identity to its Pods. Provides guarantees about ordering of deployment and scaling.
+
+EOF
+}
+
+k8_delete_namespace () {
+  kubectl get namespace $NAMESPACE -o json > $NAMESPACE.json
+  cat <<EOF
+  kubectl replace --raw "/api/v1/namespaces/$NAMESPACE/finalize" -f $NAMESPACE.json
+EOF
+}
+
+k8_deployment_vs_statefulset () {
+  cat <<EOF
+
+  +--------------------------------------------------------------------------------------------------------------+
+  |            Deployment                                   |            StatefulSet                             |
+  +---------------------------------------------------------|----------------------------------------------------+
+  | Roll out a Replica Set & scale to facilitate more load  | Ordered, graceful deployment & scaling             |
+  +---------------------------------------------------------|-------------------------+--------------------------+
+  | Rolling updates are done by updating PodTemplateSpec of | Ordered, automated rolling updates                 |
+  | Deployment. A new ReplicaSet is created & Deployment    |                                                    |
+  | manages moving Pods from old ReplicaSet to new one at a |                                                    |
+  | controlled rate.                                        |                                                    |
+  |---------------------------------------------------------|----------------------------------------------------+
+  | Rollback to an earlier Deployment.                      | No rollback, only deleting & scaling down.         |
+  |---------------------------------------------------------|----------------------------------------------------+
+  |                                                     Networking                                               |
+  |---------------------------------------------------------|----------------------------------------------------+
+  | Networking Service is separate.                         | StatefulSets currently require a Headless Service  |
+  |                                                         | to be responsible for network identity of Pods.    |
+  |                                                         | selector/app (Services) matches app (StatefulSets) |
+  +---------------------------------------------------------|----------------------------------------------------+
+
+
+
+Deployment                                         StatefulSet
+- Will roll out a Replica Set and can scale to facilitate more load.  Ordered, scalable graceful deployment.
+Rolling updates are done by updating PodTemplateSpec of Deployment. A new ReplicaSet is created and Deployment manages moving Pods from old ReplicaSet to new one at a controlled rate. Ordered, automated rolling updates
+
+- Rollback to an earlier Deployment.  No rollback, only deleting and scaling down
+
+- Networking Service is separate. StatefulSets currently require a Headless Service for network identity of Pods
+
+EOF
+}
+
+##############################################################
+#                 KUBECTL (kubectl)                          #
+##############################################################
+
+k8_bash () {
+  kubectl exec -it "$(k8_get_pod $1)" -- /bin/bash
+}
+
+k8_cluster_helper () {
+  cat <<'EOF'
+ kubectl cluster-info
+Kubernetes master is running at https://35.188.226.44
+GLBCDefaultBackend is running at https://35.188.226.44/api/v1/namespaces/kube-system/services/default-http-backend/proxy
+Heapster is running at https://35.188.226.44/api/v1/namespaces/kube-system/services/heapster/proxy
+KubeDNS is running at https://35.188.226.44/api/v1/namespaces/kube-system/services/kube-dns/proxy
+kubernetes-dashboard is running at https://35.188.226.44/api/v1/namespaces/kube-system/services/kubernetes-dashboard/proxy
+
+To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
+EOF
+}
+
+k8_command () {
+  #kubectl exec -it "$(k8_get_pod $1)" ${@: 2}
+  kubectl exec -it "$(k8_get_pod $1)" -- /bin/bash -c "${@: 2}"
+}
+
+k8_command_helper () {
+  cat <<'EOF'
+ kubectl exec -ti redis-2180715406-rzbck /bin/bash
+root@redis-2180715406-rzbck:/data#
+
+(also see: gcloud compute ssh <NODE>
+
+k8_command:
+  kubectl exec -it "$(k8_get_pod $1)" "$2"
+EOF
+}
+
+k8_config_file_export () {
+  $HOME/git/script/k8/kubectl_generate_yml.sh
+}
+
+k8_config_file_info () {
+  kubectl get -o=custom-columns=NAMESPACE:.metadata.namespace,KIND:.kind,NAME:.metadata.name pv,pvc,configmap,ingress,service,secret,deployment,statefulset,hpa,job,cronjob --all-namespaces | grep -v 'secrets/default-token'
+}
+
+k8_config_helper () {
+  cat <<'EOF'
+ kubectl config get-clusters
+NAME
+gke_stately-minutia-173521_us-east1-c_hello-java-cluster
+gke_stately-minutia-173521_us-central1-a_cluster-1
+gke_stately-minutia-173521_us-east4-a_guestbook
+
+ kubectl config current-context
+gke_stately-minutia-173521_us-east4-a_guestbook
+
+ kubectl config get-contexts
+CURRENT   NAME                                                       CLUSTER                                                    AUTHINFO                                                   NAMESPACE
+          gke_stately-minutia-173521_us-east1-c_hello-java-cluster   gke_stately-minutia-173521_us-east1-c_hello-java-cluster   gke_stately-minutia-173521_us-east1-c_hello-java-cluster
+          gke_stately-minutia-173521_us-central1-a_cluster-1         gke_stately-minutia-173521_us-central1-a_cluster-1         gke_stately-minutia-173521_us-central1-a_cluster-1
+*         gke_stately-minutia-173521_us-east4-a_guestbook            gke_stately-minutia-173521_us-east4-a_guestbook            gke_stately-minutia-173521_us-east4-a_guestbook
+EOF
+}
+
+k8_demo () {
+    cat <<'EOF'
+    kubectl get pod --namespace=demo
+    kubectl get pods -o wide --namespace=demo
+
+    kubectl get pods -o yaml --namespace=demo | egrep "Name|podIP"
+    kubectl describe pod --namespace=demo | grep IP | sed -E 's/IP:[[:space:]]+//'
+    kubectl describe pod --namespace=demo | egrep "Name|IP|Port"
+
+    kubectl --namespace=demo exec -it frontend /bin/bash
+EOF
+}
+
+k8_describe_nodes_resource () {
+  kubectl describe nodes | grep -E 'Allocated|Allocatable:|Capacity' -A 10
+}
+
+k8_eks_cluster_autoscaler () {
+  aws autoscaling describe-auto-scaling-groups --query "AutoScalingGroups[? Tags[? (Key=='k8s.io/cluster-autoscaler/enabled') && Value=='true']]".AutoScalingGroupName --region $AWS_REGION
+}
+
+k8_eks_list_oidc () {
+  local CLUSTER=$(kubectl config view --minify -o jsonpath='{.clusters[].name}')
+  local CLUSTER_NAME=$(echo $CLUSTER | awk -F '/' '{print $NF}')
+  local CLUSTER_REGION=$(echo $CLUSTER | awk -F ':' '{print $4}')
+
+  echo "CLUSTER_NAME:   $CLUSTER_NAME"
+  echo "CLUSTER_REGION: $CLUSTER_REGION"
+  local OIDC_ID=$(aws eks describe-cluster --name "$CLUSTER_NAME" --region "$CLUSTER_REGION" --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
+
+  aws iam list-open-id-connect-providers --output text | grep $OIDC_ID | cut -d "/" -f4
+}
+
+k8_exec_pod_shell_helper () {
+  cat <<EOF
+  kubectl exec -i -t couchdb-0 --namespace /bin/bash
+  kubectl exec -it frontdoor-746bc56ff-zc7zk --namespace npm -- /bin/bash
+EOF
+}
+
+k8_field_helper () {
+  cat <<EOF
+Required field: apiVersion, kind, metadata
+EOF
+}
+
+k8_file_format () {
+  cat <<'EOF'
+Required field: apiVersion, kind, metadata
+
+# Four 1st level elements: apiVersion|kind|metadata|spec
+
+apiVersion:
+kind: [Deployment|Ingress|ResourceQuota|Service]
+metadata:
+  name:
+  labels:
+spec:
+  type:
+EOF
+}
+
+k8_get_deployment_strategy () {
+  kubectl get deploy -o=jsonpath='{.items[*].spec.strategy}'
+}
+
+k8_get_namespace () {
+  local k8s_namespace=$(kubectl config get-contexts --no-headers | grep '*' | awk '{print $5}')
+
+  if [[ -z "$k8s_namespace" ]]; then
+    k8s_namespace="default"
+  fi
+
+  echo "Current namespace is: $k8s_namespace"
+}
+
+k8_get_pod () {
+  kubectl get pods | awk -v pattern="$1" '$1 ~ pattern {print $1}'
+}
+
+k8_get_pod_all-namespaces_json () {
+  kubectl get pods --all-namespaces -o json | jq -C | less -R
+}
+
+k8_get_pod_all-container () {
+  kubectl get pods --all-namespaces -o jsonpath="{.items[*].spec.containers[*]}" | jq . -S
+}
+
+k8_get_pod_all-image () {
+  kubectl get pods --all-namespaces -o jsonpath="{.items[*].spec.containers[*].image}" | tr -s '[[:space:]]' '\n' | sort | uniq -c
+}
+
+k8_get_pod_container_image () {
+  echo "Container\t\t\t\tImage"
+  kubectl get pods --all-namespaces -o=jsonpath='{range .items[*]}{"\n"}{.metadata.name}{":\t"}{range .spec.containers[*]}{.image}{", "}{end}{end}' |\
+sort | expand --tabs=40
+}
+
+k8_get_pod_container_list () {
+  if [ $# -eq ]
+  kubectl get pods "$1" -o jsonpath='{.spec.containers[*].name}' && echo
+}
+
+k8_get_pod_namespace () {
+  POD_NAME=$(kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}')
+  export "$POD_NAME"
+  while read -r NAME; do
+    curl "http://localhost:8001/api/v1/proxy/namespaces/default/pods/$NAME"
+  done <<< "$POD_NAME"
+}
+
+k8_get_podIP () {
+  kubectl get pods $1 -o yaml  | grep podIP
+}
+
+k8_get_role_ServiceAccount () {
+  kubectl get clusterrolebinding -o json | jq -r "
+    .items[]
+    |
+    select(
+      .subjects[]? |
+      select(
+        .kind == \"ServiceAccount\"
+        and
+        .namespace == \"kube-system\"
+      )
+    ) |
+    (.roleRef.kind + \"/\" + .roleRef.name)
+  "
+}
+
+k8_get_node_label () {
+  kubectl get nodes -o json | jq '.items[] | .metadata.name, .metadata.labels'
+}
+
+k8_get_node_extIP () {
+  kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+}
+
+k8_get_node_instance () {
+  kubectl get nodes -o json | jq -r '.items[] | .spec[]'
+}
+
+k8_get_node_pod () {
+  kubectl get pod -o=custom-columns=NODE:.spec.nodeName,POD:.metadata.name,STATUS:.status.phase $1
+}
+
+k8_get_pod_autoscaler_ver () {
+  kubectl get pods --all-namespaces -o=jsonpath="{..image}" -l app=cluster-autoscaler | tr ' ' '\n'
+}
+
+k8_get_pod_image_ver () {
+  kubectl get pods --all-namespaces -o=jsonpath="{..image}" | tr ' ' '\n'
+}
+
+k8_get_role_kind () {
+# Group system:authenticated
+# ClusterRole/system:basic-user
+# ClusterRole/system:discovery
+
+# ServiceAccount attachdetach-controller kube-system
+# ClusterRole/system:controller:attachdetach-controller
+
+  local kind="${1}"
+  #local name="${2}"
+  local namespace="${2:-}"
+
+  kubectl get clusterrolebinding -o json | jq -r "
+    .items[]
+    |
+    select(
+      .subjects[]? |
+      select(
+        .kind == \"${kind}\"
+        and
+        (if .namespace then .namespace else \"\" end) == \"${namespace}\"
+      )
+    ) |
+    (.roleRef.kind + \"/\" + .roleRef.name)
+  "
+}
+
+###
+
+k8_helper () {
+  cat <<EOF
+kubectl cluster-info
+kubectl config view
+kubectl describe deployment <NAME>
+kubectl get [deployments|nodes|pods] [-A | -n <name>]
+kubectl logs <pod-name>
+
+See k8_get_helper
+EOF
+}
+
+
+k8_ingress_simple_helper () {
+  cat <<EOF
+foo.bar.com -> 178.91.123.132 -> / foo    s1:80
+                                 / bar    s2:80
+
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - path: /foo
+        backend:
+          serviceName: s1
+          servicePort: 80
+      - path: /bar
+        backend:
+          serviceName: s2
+          servicePort: 80
+
+Name based
+==========
+foo.bar.com --|                 |-> foo.bar.com s1:80
+              | 178.91.123.132  |
+bar.foo.com --|                 |-> bar.foo.com s2:80
+
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - path: /foo
+        backend:
+          serviceName: s1
+          servicePort: 80
+      - path: /bar
+        backend:
+          serviceName: s2
+          servicePort: 80
+
+EOF
+}
+
+k8_ingress_nginx_controller_config () {
+  # https://github.com/kubernetes/ingress-nginx/pull/8624#issue-1245911476 Global location / not supported
+  # https://github.com/kubernetes/ingress-nginx/pull/8747
+  kubectl exec -it -n ingress-nginx "$1" -- cat /etc/nginx/nginx.conf > ~/nginx.conf
+}
+
+k8_ingress_vesrion () {
+  cat <<EOF
+Ingress & IngressClass resources for "networking.k8s.io/v1"
+
+extensions/v1beta1 and networking.k8s.io/v1beta1 API versions are deprecated (ends support 1.22+)
+Persisted objects accessed via networking.k8s.io/v1
+
+Notable changes in v1 Ingress objects (v1beta1 field names are unchanged):
+
+* spec.backend -> spec.defaultBackend
+* serviceName  -> service.name
+* servicePort  -> service.port.name (for string)
+* servicePort  -> service.port.number (for numeric)
+* pathType no longer has a default value in v1
+  Specify either (Exact/Prefix/ImplementationSpecific)
+
+Other Ingress API updates:
+* backends can now be resource or service backends
+* path is no longer required to be a valid REGEX
+EOF
+}
+
+k8_jwt_token () {
+  cat <<EOF
+export K8_JWT_TOKEN_DEFAULT=$(kubectl get secrets $(kubectl get serviceaccounts/default -o jsonpath='{.secrets[0].name}') -o jsonpath='{.data.token}' | base64 --decode)
+
+# Kubernetes 1.24+
+export K8_JWT_TOKEN_DEFAULT=$(kubectl create token default)
+EOF
+}
+
+k8_label () {
+  cat <<EOF
+matchLabel: pod specifier for deployment
+  - matchLabels are not supported by Service
+  - only supported by: Job, Deployment, Replica Set, Daemon Set
+
+template is a "podTemplate"
+
+spec.selector.matchLabels in a Deployment yaml means control replicaSet/Pods which have this label
+spec.template.metadata.labels means Assigns this label when creating a ReplicaSet/Pod (must match sprc.selector.matchLabels).
+
+###
+kind: Deployment
+...
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+    tier: backend
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+        tier: backend
+EOF
+}
+
+k8_network_overview () {
+  cat <<EOF
+container <-> container: solved by Pods and localhost communications
+pod <-> pod: newtork (doesn't need service discovery due to IP-per-pod model)
+pod <-> service: services
+external <-> service: services
+
+# Kubernetes network model (IP-per-pod" model)
+- every pod gets unique (cluster-wide) IP
+- pod <-> pod on any other node without NAT (flat address space)
+- agents on a node <-> all pods on that node
+
+k8 IP addresses exist at Pod scope (containers within a Pod share network namespaces - includes IP/MAC address) Containers within a Pod can all reach each other's ports on localhost
+
+# Service
+Expose application (on a set of Pods) as a network service
+
+Pods set targeted by Service is (usually) determined by selector *
+
+If service has no selector, Endpoints object is not created automatically.  Can manually map Service to network address/port by adding Endpoints object manually
+
+EOF
+}
+
+k8_node_overview () {
+  kubectl describe nodes | grep -w 'Name:\|Capacity:\|Allocatable:\|cpu\|memory:\|InternalIP:\|ExternalIP:'
+}
+
+k8_node_port () {
+  export NODE_PORT=$(kubectl get services/kubernetes-bootcamp -o go-template='{{(index .spec.ports 0).nodePort}}')
+  curl localhost:$NODE_PORT
+}
+
+k8_node_taint () {
+  #kubectl get nodes -o go-template-file="./nodes-taints.tmpl"
+  kubectl get nodes -o template --template='{{printf "%-50s %-12s\n" "Node" "Taint"}}{{- range .items}}{{- if $taint := (index .spec "taints") }}{{- .metadata.name }}{{ "\t" }}{{- range $taint }}{{- .key }}={{ .value }}:{{ .effect }}{{ "\t" }}{{- end }}{{- "\n" }}{{- end}}{{- end}}'
+}
+
+k8_nsenter_helper () {
+  cat <<EOF
+kubectl describe pod <pod> | ag docker:
+
+~/nsenter-node <node>
+
+docker exec -it -u root <docker id> /bin/ash
+
+apk --no-cache add curl \
+    && apk --no-cache add unzip \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip
+EOF
+}
+
+k8_overview () {
+  printf 'current-context:\n' && kubectl config current-context && \
+  printf '\npods:\n' && kubectl get pods \
+  && printf '\nservice:\n' && kubectl get svc \
+  && printf '\ningress\n' && kubectl get ingress
+}
+
+k8_probe_helper () {
+  cat <<EOF
+Liveness (when to restart)
+- after exceed failure threshold -> restart container
+- ideal for jobs that don't handle incoming traffic
+- can detect deadlock where process still runs
+
+If not specified: use PID 1 process status; so if using init tool might require liveness probe
+
+Rec: initialDelaySeconds parameter > maximum initialization time
+
+If not specified: once PID 1 process started will add pod to endpoint to receive traffic
+
+Readiness (signals readiness to process requests)
+- READY -> pod add to endpoint
+- NOT_READY -> pod removed from endpoint
+Probe continues; good for temporary failure with external dependencies
+
+Rec: evaluates shared dependency; set timeout > maximum response time
+     default failureThreshold count 3; may want to increase
+
+Liveness -> restart
+Readiness -> no restart
+
+EOF
+}
+
+k8_prom_port-forward () {
+  kubectl port-forward svc/prometheus 9090 -n default
+}
+
+k8_rbac_helper () {
+  cat <<EOF
+
+EOF
+}
+
+k8_run_helper () {
+cat <<EOF
+kubectl run hello-java \
+  --image=gcr.io/PROJECT_ID/hello-java:v1 \
+  --port=8080
+EOF
+}
+
+k8_run_awscli () {
+  kubectl run -i --tty --rm aws-cli --image=amazon/aws-cli --restart=Never --command -- bash
+}
+
+
+k8_run_awscli_pod () {
+cat <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aws-cli
+#  namespace: YOUR_NAMESPACE
+spec:
+  serviceAccountName: <SERVICEACCOUNT>
+  containers:
+  - name: aws-cli
+    image: amazon/aws-cli:latest
+    command:
+      - sleep
+      - "3600"
+    imagePullPolicy: IfNotPresent
+  restartPolicy: Always
+EOF
+}
+
+k8_run_busybox () {
+  #  kubectl run -i --tty --rm busybox --image=busybox:latest --restart=Never -- ash
+  kubectl run -i --tty --rm busybox --image=375215620020.dkr.ecr.us-west-2.amazonaws.com/tinybeans/infra-busybox:latest --restart=Never -- ash
+}
+
+k8_run_curl () {
+  # kubectl run -i --tty --rm curl --image=curlimages/curl --restart=Never -- sh
+  kubectl run -i --tty --rm busybox --image=375215620020.dkr.ecr.us-west-2.amazonaws.com/tinybeans/infra-curl:latest --restart=Never -- ash
+}
+
+k8_run_debug () {
+  kubectl run -i --tty --rm debug --image=375215620020.dkr.ecr.us-west-2.amazonaws.com/tinybeans/infra-debug:latest  --restart=Never -- bash
+}
+
+k8_run_nmap () {
+  kubectl run -i --tty --rm nmap --image=instrumentisto/nmap --restart=Never --command -- /bin/sh
+}
+
+k8_run_mysql () {
+  kubectl run mysql-client --image=mysql:latest -it --rm --restart=Never -- /bin/bash
+}
+
+k8_run_mysql57 () {
+  kubectl run mysql-client --image=mysql:5.7 -it --rm --restart=Never -- /bin/bash
+}
+
+k8_run_postgres () {
+  kubectl run -i --tty --rm postgres --image=postgres:latest --restart=Never -- bash
+}
+
+k8_run_postgres13_4 () {
+  #kubectl run -i --tty --rm postgres --image=postgres:13.4 --restart=Never -- bash
+  kubectl run -i --tty --rm postgres --image=375215620020.dkr.ecr.us-west-2.amazonaws.com/tinybeans/infra-postgres13.4:latest --restart=Never -- bash
+}
+
+k8_get_secret_helper () {
+  cat <<EOF
+kubectl get secret argocd-image-updater-secret -o "jsonpath={.data.argocd\.token}" | base64 -d
+EOF
+}
+
+k8_service_dns_helper () {
+  cat <<EOF
+Service creates DNS entry of form:
+<service-name>.<namespace-name>.svc.cluster.local
+
+When container uses <service-name>; resolves to local namespace
+EOF
+}
+
+k8_service_networking () {
+  cat <<EOF
+Public -> LB            -> Service IP:port -> Pod:TargetPort -> Container:ContainerPort -> EXPOSE 80
+
+Public -> Node:NodePort -> Service IP:port -> Pod:TargetPort -> Container:ContainerPort -> EXPOSE 80
+EOF
+}
+
+k8_service_pod_finder () {
+  echo "Use: kubectl get pods --namespace NAME --selector SELECTION"
+}
+
+k8_set_namespace () {
+  kubectl config set-context "$(kubectl config current-context)" --namespace="$1"
+
+  # See k8_get_nspace
+  k8_get_namespace
+}
+
+
+k8_pod_aws_helper () {
+  cat <<EOF
+###
+Instance      Max ENI     IPv4 per Interface    IPv6 per Interface
+t3.medium     3           6                     6
+
+Max Pods = (Max. ENI for instance * # IPv4 per Interface ) - 1
+      17 = (3 * 6) - 1
+EOF
+}
+
+k8_pod_concept () {
+    cat <<'EOF'
+Pods contains:
+- shared storage/volumes
+- network
+- containers
+
+Pod runs on a node.
+EOF
+}
+
+k8_readinessProbe_helper () {
+  cat <<EOF
+# HTTP probe
+readinessProbe:
+  initialDelaySeconds: 1
+  periodSeconds: 2
+  timeoutSeconds: 1
+  successThreshold: 1
+  failureThreshold: 1
+  httpGet:
+    host:
+    scheme: HTTP
+    path: /
+    httpHeaders:
+    - name: Host
+      value: myapplication1.com
+    port: 80
+EOF
+}
+
+k8_resource_limit () {
+  cat <<EOF
+# CPU
+expression 0.1 is equivalent to expression 100m
+0.5 is guaranteed half as much 1 CPU (500m)
+
+Note: CPU is requested as an absolute quantity (not relative); e.g. 0.1 is same CPU on a single-core/dual-core/48-core machine
+
+# Memory
+EOF
+}
+
+k8_sample_ConfigMaps () {
+  cat <<EOF
+kind: ConfigMap
+metadata:
+  name: zookeeper-config
+  namespace: kafka
+apiVersion: v1
+data:
+  init.sh: |-
+    #!/bin/bash
+    set -x
+    [ -z "$ID_OFFSET" ] && ID_OFFSET=1
+
+  zookeeper.properties: |-
+    tickTime=2000
+    dataDir=/var/lib/zookeeper/data
+EOF
+}
+
+k8_service_helper () {
+  cat <<EOF
+A Service can map any incoming port to a targetPort.
+
+default: targetPort is set to same value as port field
+EOF
+}
+
+k8_service_sample () {
+  cat <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyApp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 9376
+EOF
+}
+
+
+
+k8_template_deploy () {
+  cat <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-cli
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aws-cli
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aws-cli
+    spec:
+      containers:
+      - image: amazon/aws-cli
+        name: aws-cli
+        command:
+        - bash
+        stdin: true
+        stdinOnce: true
+        tty: true
+      serviceAccountName: CHANGE
+EOF
+}
+
+
+k8_template_pod () {
+  cat <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aws-cli
+spec:
+  containers:
+  - image: amazon/aws-cli
+    name: aws-cli
+    command:
+    - bash
+    stdin: true
+    stdinOnce: true
+    tty: true
+  serviceAccountName: CHANGE
+  automountServiceAccountToken: true
+EOF
+}
+
+#################################################################
+
+kb_apply () {
+  # $2 debug level e.g. --v=6
+  kubectl apply $2 --validate=true -f "$1"
+}
+
+kb_argoroll_get () {
+  kubectl argo rollouts get rollouts $1
+}
+
+kb_apply_chain () {
+  cat <<EOF
+kubectl -> client-side validation
+  -> api-server(authentication, authorization, admission control) -> etcd (add Deployment resource)
+  -> api-server -> controller-manager (deployment controller creates hash of pod template & create ReplicaSet with hash appended to name) -> ReplicaSet resource created
+  -> api-server -> etcd(add ReplicaSet resource)
+  -> api-server -> controller-manager (replicaset controller creates same # of pods given in replica spec with a random name appended)
+  -> api-server -> etcd(add pods)
+  -> api-server -> scheduler(find best possible node for pods)
+  -> api-server -> Kubelet of node set by scheduler -> CRI
+  -> Actual Container Runtime(translate pod to containers) -> pause container
+  -> CNI -> CNI plugin -> bridge -> veth -> assign IP to pod -> inter-host networking -> container starts running
+EOF
+}
+
+kb_debug_helper () {
+  cat <<EOF
+kubectl debug -it <TARGET_POD> --image=busybox:1.28 --target=<TARGET_POD>
+EOF
+}
+
+kb_endpoint_issue () {
+  cat <<EOF
+1) label mismatch (check deploy & service)
+2) port mismatch (ingress port <=> deploy port)
+EOF
+}
+
+kb_exec_nginx_config () {
+  kubectl exec "$1" $2 -- cat /etc/nginx/nginx.conf
+}
+
+kb_exec_pod_env () {
+  kubectl exec -it "$1" -- env
+}
+
+kb_exec_sh () {
+  local SHELL=${2:-sh}
+  kubectl exec -it --tty "$1" -- $SHELL
+}
+
+kb_gd_container () {
+   kubectl get deploy "$1" -o jsonpath={.spec.template.spec.containers[*]} | jq .
+}
+
+kb_gd_env () {
+  [[ ! -z "$1" ]] && kubectl get deploy "$1" -o=jsonpath='{.spec.template.spec.containers[0].env[*]}' | jq .
+}
+
+kb_gd_label () {
+  kubectl get deploy "$1"  -o jsonpath={.spec.template.metadata.labels}
+}
+
+kb_gd_resource () {
+  kubectl get deploy "$1" -o jsonpath={.spec.template.spec.containers[*].resources} | jq .
+}
+
+kb_gsec_data_ca () {
+  [[ ! -z "$1" ]] && kubectl get secret "$1" -ojsonpath='{.data.ca}' || \
+  cat <<EOF
+Req. <secret-name>
+
+e.g. ingress-nginx-admission
+EOF
+}
+
+kb_gn_capacity () {
+  local NAME=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr " " "\n")
+  # local OUTPUT=$(kubectl describe node)
+  # local NAME=$(echo "$OUTPUT" | grep -e "Name: " | awk '{print $2}')
+  # local CAPACITY=$(echo "$OUTPUT" | grep -e 'Capacity' -A 13)
+
+  for i in $NAME; do
+    echo "$i"
+    kubectl describe node $i | grep -e 'Capacity' -A 13
+    echo
+  done
+}
+
+kb_gn_pod_capacity () {
+  kubectl get nodes -o=custom-columns=NODE:.metadata.name,MAX_PODS:.status.allocatable.pods,CAPACITY_PODS:.status.capacity.pods,INSTANCE_TYPE:.metadata.labels."node\.kubernetes\.io/instance-type"
+}
+
+kb_gn_pod_capacity () {
+  kubectl get nodes -o=custom-columns=NODE:.metadata.name,MAX_PODS:.status.allocatable.pods,CAPACITY_PODS:.status.capacity.pods,INSTANCE_TYPE:.metadata.labels."node\.kubernetes\.io/instance-type"
+}
+
+kb_gp_image () {
+  local NS="$2"
+  #kubectl get pod $1 $NS -o json | jq '.status.containerStatuses[] | { "image": .image, "imageID": .imageID }'
+  kubectl get pods $1 $NS -o jsonpath="{.items[*].spec.containers[*].image}" | tr " " "\n" | uniq -c | sort
+}
+
+kb_gs_label () {
+  kubectl get service "$1" -o jsonpath={.spec.selector}
+}
+
+# kb_gp_images_all () {
+#   local NS="$1"
+#   kubectl get pods "$NS" -o jsonpath='{range .items[*]}{.spec.containers[*].image}{" "}' | tr " " "\n" | sort
+# }
+
+kb_gval_webhook_conf_cabundle () {
+  kubectl get validatingwebhookconfigurations "$1" -o jsonpath='{.webhooks[0].clientConfig.caBundle}'
+}
+
+kb_jsonpath_helper () {
+  cat <<EOF
+kubectl get nodes -o jsonpath='{range .items[*]}{"Name: "}{.metadata.name}{"\nCapacity: "}{.status.capacity}{"\nAllocatable: "}{.status.allocatable}{"\n\n"}{end}'
+EOF
+}
+
+kb_l () {
+  kubectl logs "$1" -f
+}
+
+kb_rollout_restart () {
+  kubectl rollout restart deploy "$1" && kubectl rollout status deploy "$1"
+}
+
+#################################################################
+
+# k8_state_store () {
+#   export KOPS_STATE_STORE="$1"
+# }
+
+# kops_cluster_setup () {
+#   if [[ "$#" -eq 0 ]]; then
+#     cat <<'EOF'
+#     $1={dev.name}
+#     mkdir -p /home/antho/aws_lab/kops/stacks/{dev.name}
+# EOF
+#   else
+#     mkdir -p /home/antho/aws_lab/kops/stacks/"$1"/ && \
+#     cd "$_" && touch kubeconfig && \
+#     sudo ssh-keygen -t rsa -f id_rsa && \
+#     cp ../cluster.template .
+#     aws s3 mb s3://"$1"/
+#     export KOPS_STATE_STORE=s3://clusters.$1
+#     aws s3api put-object --bucket clusters.$1 --key $1/config
+#     tree
+#     export CUR_K8=$(pwd)
+#     sleep 1
+#   fi
+# }
+
+# kops_cluster_update () {
+#   echo "Updating ... KOPS_STATE_STORE, kops_ig_master.yml, kops_ig_nodes.yml ..."
+#   export KOPS_STATE_STORE=s3://clusters.dev.digital-trend.net
+#   # kops replace -f ./config/kops_ig_master.yml && \
+#   # kops replace -f ./config/kops_ig_nodes.yml && \
+#   kops update cluster --yes && kops rolling-update cluster
+#   echo 'kubectl config view && kubectl proxy'
+# }
+
+# kops_command_helper () {
+#   cat <<'EOF'
+# Edit using 'kops edit ig master-us-east-1a' or config/
+
+# kops get cluster
+# kops get ig
+# kops edit ig nodes
+# kops edit ig master-<zone>
+
+# kops get instancegroups
+# kops update --name dev.digital-trend.net kubeconfig
+# kops update cluster --yes && kops rolling-update cluster
+
+# EOF
+# }
+
+# kops_create_cluster () {
+#   if [[ "$#" -eq 0 ]]; then
+#     cd /home/antho/aws_lab/kops/stacks && ls
+#     cat <<'EOF'
+#     Run in /home/antho/aws_lab/kops/stacks/{dev.name}
+#     kops create cluster $(cat file) 2>&1 | tee create_cluster.txt
+#     Please change directory!
+# EOF
+#   else
+#     kops create cluster $(cat $1 | tr -s '\n' ' ') --admin-access $(curl http://checkip.amazonaws.com)/32 \
+#     2>&1 | tee create_cluster.txt
+#   fi
+# }
+
+# kops_node_change_helper () {
+#   cat <<'EOF'
+#   kops get ig
+
+#   Master: kops edit ig master-<zone>
+#   Node:   kops edit ig nodes
+
+#   kops_cluster_update
+# EOF
+# }
+
+echo "End sourcing $(basename $0)"
